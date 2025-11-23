@@ -1,0 +1,617 @@
+"""
+FastAPI Backend for Multi-Output Plant Disease Detection
+Provides REST API endpoints for predictions, retraining, and management
+"""
+
+import os
+import sys
+import logging
+from pathlib import Path
+from datetime import datetime
+from typing import List, Optional
+import io
+
+import numpy as np
+import cv2
+from PIL import Image
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.prediction import PredictionEngine
+from src.retraining import RetrainingPipeline
+from src.config import (
+    API_CONFIG,
+    RETRAIN_DATA_DIR,
+    LOGS_DIR,
+)
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI
+app = FastAPI(
+    title="Plant Disease Detection API",
+    description="Multi-output deep learning API for plant type and disease classification",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global instances
+prediction_engine: Optional[PredictionEngine] = None
+retraining_pipeline: Optional[RetrainingPipeline] = None
+
+# Global status tracking
+api_status = {
+    "started_at": datetime.now().isoformat(),
+    "model_loaded": False,
+    "predictions_count": 0,
+    "successful_predictions": 0,
+    "failed_predictions": 0,
+    "retraining_in_progress": False,
+    "last_retrain": None,
+}
+
+
+# PYDANTIC MODELS (Request/Response Schemas)
+
+class PredictionResponse(BaseModel):
+    """Response model for single prediction"""
+    plant_type: str
+    plant_confidence: float
+    disease: str
+    disease_confidence: float
+    overall_confidence: float
+    top_3_plants: List[dict]
+    top_3_diseases: List[dict]
+    recommendation: Optional[str] = None
+    status: str
+
+
+class BatchPredictionResponse(BaseModel):
+    """Response model for batch predictions"""
+    results: List[dict]
+    total_processed: int
+    successful: int
+    failed: int
+
+
+class HealthResponse(BaseModel):
+    """Response model for health check"""
+    status: str
+    model_loaded: bool
+    timestamp: str
+    uptime_seconds: float
+
+
+class StatusResponse(BaseModel):
+    """Response model for API status"""
+    status: str
+    model_loaded: bool
+    predictions_count: int
+    successful_predictions: int
+    failed_predictions: int
+    uptime: str
+    retraining_in_progress: bool
+
+
+class RetrainDataResponse(BaseModel):
+    """Response model for retrain data upload"""
+    uploaded: int
+    total: int
+    failed: int
+    errors: List[dict]
+    message: str
+
+
+class RetrainTriggerResponse(BaseModel):
+    """Response model for retrain trigger"""
+    triggered: bool
+    reason: str
+    timestamp: str
+    new_samples: int
+
+
+class RetrainStatusResponse(BaseModel):
+    """Response model for retrain status"""
+    total_samples: int
+    ready_to_retrain: bool
+    min_required: int
+    message: str
+
+
+# STARTUP & SHUTDOWN EVENTS
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize models and services on startup"""
+    global prediction_engine, retraining_pipeline, api_status
+    
+    logger.info("="*70)
+    logger.info(" Starting Plant Disease Detection API")
+    logger.info("="*70)
+    
+    try:
+        # Initialize prediction engine
+        logger.info(" Loading prediction engine...")
+        prediction_engine = PredictionEngine()
+        
+        if prediction_engine.model_loaded:
+            api_status["model_loaded"] = True
+            logger.info(" Prediction engine loaded successfully")
+            
+            # Log model info
+            model_info = prediction_engine.get_model_info()
+            logger.info(f" Model Info:")
+            logger.info(f"   - Plant classes: {model_info['num_plant_classes']}")
+            logger.info(f"   - Disease classes: {model_info['num_disease_classes']}")
+        else:
+            logger.error(" Failed to load prediction engine")
+            api_status["model_loaded"] = False
+        
+        # Initialize retraining pipeline
+        logger.info(" Initializing retraining pipeline...")
+        retraining_pipeline = RetrainingPipeline()
+        logger.info(" Retraining pipeline initialized")
+        
+        logger.info("="*70)
+        logger.info(" API startup complete!")
+        logger.info("="*70)
+        
+    except Exception as e:
+        logger.error(f" Startup error: {str(e)}")
+        api_status["model_loaded"] = False
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info(" Shutting down API...")
+
+
+# HEALTH & STATUS ENDPOINTS
+
+@app.get("/", tags=["Health"])
+async def root():
+    """Root endpoint - API welcome"""
+    return {
+        "message": " Plant Disease Detection API",
+        "version": "2.0.0",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
+
+@app.get("/health", response_model=HealthResponse, tags=["Health"])
+async def health_check():
+    """Detailed health check endpoint"""
+    uptime = (datetime.now() - datetime.fromisoformat(api_status["started_at"])).total_seconds()
+    
+    return HealthResponse(
+        status="healthy" if api_status["model_loaded"] else "unhealthy",
+        model_loaded=api_status["model_loaded"],
+        timestamp=datetime.now().isoformat(),
+        uptime_seconds=uptime
+    )
+
+
+@app.get("/status", response_model=StatusResponse, tags=["Status"])
+async def get_status():
+    """Get comprehensive API and model status"""
+    return StatusResponse(
+        status="running" if api_status["model_loaded"] else "degraded",
+        model_loaded=api_status["model_loaded"],
+        predictions_count=api_status["predictions_count"],
+        successful_predictions=api_status["successful_predictions"],
+        failed_predictions=api_status["failed_predictions"],
+        uptime=api_status["started_at"],
+        retraining_in_progress=api_status["retraining_in_progress"]
+    )
+
+
+@app.get("/model/info", tags=["Model"])
+async def get_model_info():
+    """Get detailed model information"""
+    if not prediction_engine or not prediction_engine.model_loaded:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    return prediction_engine.get_model_info()
+
+
+# PREDICTION ENDPOINTS
+
+@app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
+async def predict_single(file: UploadFile = File(...)):
+    """
+    Make a single prediction on uploaded leaf image
+    
+    Args:
+        file: Image file (JPEG, PNG, BMP)
+        
+    Returns:
+        Prediction results with plant type and disease classification
+    """
+    if not api_status["model_loaded"] or not prediction_engine:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    # Validate file type
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    try:
+        # Read and decode image
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image file")
+        
+        # Convert BGR to RGB
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Make prediction
+        result = prediction_engine.predict_from_array(image)
+        
+        if result.get("status") == "failed" or "error" in result:
+            api_status["failed_predictions"] += 1
+            raise HTTPException(status_code=400, detail=result.get("error", "Prediction failed"))
+        
+        # Add recommendation
+        result["recommendation"] = prediction_engine.get_recommendation(result["disease"])
+        
+        # Update stats
+        api_status["predictions_count"] += 1
+        api_status["successful_predictions"] += 1
+        
+        logger.info(f" Prediction #{api_status['predictions_count']}: {result['plant_type']} - {result['disease']}")
+        
+        return PredictionResponse(**result)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_status["failed_predictions"] += 1
+        logger.error(f" Prediction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+
+@app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Prediction"])
+async def predict_batch(files: List[UploadFile] = File(...)):
+    """
+    Make batch predictions on multiple images
+    
+    Args:
+        files: List of image files
+        
+    Returns:
+        Batch prediction results
+    """
+    if not api_status["model_loaded"] or not prediction_engine:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 images per batch")
+    
+    results = []
+    successful = 0
+    failed = 0
+    
+    for idx, file in enumerate(files):
+        try:
+            # Read image
+            contents = await file.read()
+            nparr = np.frombuffer(contents, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                results.append({
+                    "filename": file.filename,
+                    "status": "failed",
+                    "error": "Invalid image format"
+                })
+                failed += 1
+                continue
+            
+            # Convert BGR to RGB
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Predict
+            result = prediction_engine.predict_from_array(image)
+            result["filename"] = file.filename
+            result["index"] = idx
+            
+            if result.get("status") == "success":
+                result["recommendation"] = prediction_engine.get_recommendation(result["disease"])
+                successful += 1
+            else:
+                failed += 1
+            
+            results.append(result)
+            api_status["predictions_count"] += 1
+            
+        except Exception as e:
+            logger.error(f" Batch prediction error for {file.filename}: {str(e)}")
+            results.append({
+                "filename": file.filename,
+                "index": idx,
+                "status": "failed",
+                "error": str(e)
+            })
+            failed += 1
+    
+    api_status["successful_predictions"] += successful
+    api_status["failed_predictions"] += failed
+    
+    logger.info(f" Batch prediction: {successful}/{len(files)} successful")
+    
+    return BatchPredictionResponse(
+        results=results,
+        total_processed=len(files),
+        successful=successful,
+        failed=failed
+    )
+
+
+# RETRAINING ENDPOINTS
+
+@app.post("/retrain/upload", response_model=RetrainDataResponse, tags=["Retraining"])
+async def upload_retrain_data(files: List[UploadFile] = File(...)):
+    """
+    Upload images for model retraining
+    
+    Expected filename format: PlantName___DiseaseName_*.jpg
+    Example: Tomato___Early_Blight_001.jpg
+    
+    Args:
+        files: List of labeled image files
+        
+    Returns:
+        Upload status
+    """
+    if not retraining_pipeline:
+        raise HTTPException(status_code=503, detail="Retraining pipeline not initialized")
+    
+    uploaded = 0
+    failed = 0
+    errors = []
+    
+    # Ensure retrain directory exists
+    RETRAIN_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    plant_village_dir = RETRAIN_DATA_DIR / "PlantVillage"
+    plant_village_dir.mkdir(exist_ok=True)
+    
+    for file in files:
+        try:
+            # Parse filename to get class
+            # Expected: PlantName___DiseaseName_*.jpg
+            filename = file.filename
+            
+            # Extract class from filename (before last underscore and number)
+            # E.g., "Tomato___Early_Blight_001.jpg" -> "Tomato___Early_Blight"
+            parts = filename.rsplit('_', 1)[0] if '_' in filename else filename.split('.')[0]
+            
+            if '___' not in parts:
+                errors.append({
+                    "filename": filename,
+                    "error": "Invalid filename format. Expected: PlantName___DiseaseName_*.jpg"
+                })
+                failed += 1
+                continue
+            
+            # Create class directory
+            class_dir = plant_village_dir / parts
+            class_dir.mkdir(exist_ok=True)
+            
+            # Save file
+            save_path = class_dir / filename
+            contents = await file.read()
+            
+            with open(save_path, "wb") as f:
+                f.write(contents)
+            
+            uploaded += 1
+            logger.info(f" Saved: {save_path}")
+            
+        except Exception as e:
+            errors.append({
+                "filename": file.filename,
+                "error": str(e)
+            })
+            failed += 1
+            logger.error(f" Upload error for {file.filename}: {str(e)}")
+    
+    message = f"Successfully uploaded {uploaded}/{len(files)} files"
+    logger.info(message)
+    
+    return RetrainDataResponse(
+        uploaded=uploaded,
+        total=len(files),
+        failed=failed,
+        errors=errors,
+        message=message
+    )
+
+
+@app.get("/retrain/status", response_model=RetrainStatusResponse, tags=["Retraining"])
+async def get_retrain_status():
+    """Check status of retraining data"""
+    if not retraining_pipeline:
+        raise HTTPException(status_code=503, detail="Retraining pipeline not initialized")
+    
+    status = retraining_pipeline.check_new_data()
+    
+    return RetrainStatusResponse(
+        total_samples=status["total_samples"],
+        ready_to_retrain=status["ready_to_retrain"],
+        min_required=status["min_required"],
+        message=status["message"]
+    )
+
+
+@app.post("/retrain/trigger", response_model=RetrainTriggerResponse, tags=["Retraining"])
+async def trigger_retraining(
+    background_tasks: BackgroundTasks,
+    min_samples: int = Query(50, description="Minimum samples required for retraining"),
+    epochs: int = Query(20, description="Number of training epochs")
+):
+    """
+    Trigger model retraining with uploaded data
+    
+    Args:
+        min_samples: Minimum samples required
+        epochs: Number of training epochs
+        
+    Returns:
+        Retraining trigger status
+    """
+    if not retraining_pipeline or not prediction_engine:
+        raise HTTPException(status_code=503, detail="Services not initialized")
+    
+    if api_status["retraining_in_progress"]:
+        raise HTTPException(status_code=409, detail="Retraining already in progress")
+    
+    # Check if conditions are met
+    trigger_status = retraining_pipeline.trigger_retrain(min_samples)
+    
+    if trigger_status["triggered"]:
+        # Add background task
+        background_tasks.add_task(
+            perform_retraining,
+            retraining_pipeline,
+            prediction_engine,
+            epochs
+        )
+        api_status["retraining_in_progress"] = True
+        logger.info(" Retraining task started in background")
+    
+    return RetrainTriggerResponse(
+        triggered=trigger_status["triggered"],
+        reason=trigger_status["reason"],
+        timestamp=trigger_status["timestamp"],
+        new_samples=trigger_status["new_samples"]
+    )
+
+
+async def perform_retraining(pipeline: RetrainingPipeline, engine: PredictionEngine, epochs: int):
+    """Background task for actual retraining"""
+    try:
+        logger.info("="*70)
+        logger.info(" STARTING MODEL RETRAINING")
+        logger.info("="*70)
+        
+        # Retrain
+        results = pipeline.retrain_model(epochs=epochs, fine_tune=True)
+        
+        if results["status"] == "success":
+            # Save new model
+            new_version = pipeline.save_retrained_model()
+            logger.info(f" Model saved as {new_version}")
+            
+            # Reload in prediction engine
+            engine.load_model()
+            logger.info(" Prediction engine reloaded with new model")
+            
+            api_status["last_retrain"] = datetime.now().isoformat()
+            logger.info("="*70)
+            logger.info(" RETRAINING COMPLETED SUCCESSFULLY")
+            logger.info("="*70)
+        else:
+            logger.error(f" Retraining failed: {results.get('error')}")
+        
+    except Exception as e:
+        logger.error(f" Retraining error: {str(e)}")
+    finally:
+        api_status["retraining_in_progress"] = False
+
+
+# METRICS ENDPOINTS
+
+@app.get("/metrics", tags=["Metrics"])
+async def get_metrics():
+    """Get API usage metrics"""
+    uptime_seconds = (datetime.now() - datetime.fromisoformat(api_status["started_at"])).total_seconds()
+    
+    return {
+        "predictions": {
+            "total": api_status["predictions_count"],
+            "successful": api_status["successful_predictions"],
+            "failed": api_status["failed_predictions"],
+            "success_rate": (
+                api_status["successful_predictions"] / api_status["predictions_count"] * 100
+                if api_status["predictions_count"] > 0 else 0
+            )
+        },
+        "uptime": {
+            "started_at": api_status["started_at"],
+            "uptime_seconds": uptime_seconds,
+            "uptime_hours": uptime_seconds / 3600
+        },
+        "model": {
+            "loaded": api_status["model_loaded"],
+            "last_retrain": api_status["last_retrain"]
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/metrics/summary", tags=["Metrics"])
+async def get_metrics_summary():
+    """Get summarized metrics for dashboard"""
+    return {
+        "total_predictions": api_status["predictions_count"],
+        "model_status": "online" if api_status["model_loaded"] else "offline",
+        "uptime": api_status["started_at"],
+        "last_retrain": api_status["last_retrain"],
+    }
+
+
+# ERROR HANDLERS
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler"""
+    logger.error(f" Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error": str(exc)
+        }
+    )
+
+
+# MAIN
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    logger.info(" Starting FastAPI server...")
+    
+    uvicorn.run(
+        app,
+        host=API_CONFIG["host"],
+        port=API_CONFIG["port"],
+        reload=API_CONFIG["reload"],
+        log_level="info"
+    )

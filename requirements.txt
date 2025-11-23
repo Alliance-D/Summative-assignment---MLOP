@@ -1,0 +1,45 @@
+# Core ML Libraries
+tensorflow==2.15.1
+keras==3.0.5
+numpy==1.26.4
+pandas==2.2.0
+scikit-learn==1.4.0
+opencv-python==4.9.0.80
+Pillow==10.2.0
+
+# API Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+pydantic==2.4.2
+
+# Frontend
+streamlit==1.28.1
+streamlit-option-menu==0.3.6
+
+# Data Visualization
+matplotlib==3.8.0
+seaborn==0.13.0
+plotly==5.17.0
+
+# Database
+sqlalchemy==2.0.23
+sqlite3  # Built-in
+
+# Load Testing
+locust==2.17.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+aiofiles==23.2.1
+PyYAML==6.0.1
+kagglehub==0.2.4  # For downloading PlantVillage dataset
+
+# Monitoring & Logging
+prometheus-client==0.18.0
+
+# Development
+jupyter==1.0.0
+jupyterlab==4.0.9
+ipython==8.16.0

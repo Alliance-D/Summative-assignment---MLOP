@@ -1,0 +1,22 @@
+{
+  "plant_to_idx": {
+    "Pepper": 0,
+    "Potato": 1
+  },
+  "disease_to_idx": {
+    "Bacterial_spot": 0,
+    "Early_blight": 1,
+    "Late_blight": 2,
+    "healthy": 3
+  },
+  "idx_to_plant": {
+    "0": "Pepper",
+    "1": "Potato"
+  },
+  "idx_to_disease": {
+    "0": "Bacterial_spot",
+    "1": "Early_blight",
+    "2": "Late_blight",
+    "3": "healthy"
+  }
+}

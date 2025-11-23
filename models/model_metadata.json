@@ -1,0 +1,37 @@
+{
+  "model_name": "Plant Disease Multi-Output Classifier",
+  "version": "1.0.0",
+  "created_at": "2025-11-23T17:01:49.612388",
+  "architecture": "MobileNetV2 with dual output heads",
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "num_plant_classes": 2,
+  "num_disease_classes": 4,
+  "plant_classes": [
+    "Pepper",
+    "Potato"
+  ],
+  "disease_classes": [
+    "Bacterial_spot",
+    "Early_blight",
+    "Late_blight",
+    "healthy"
+  ],
+  "training_samples": 3237,
+  "validation_samples": 692,
+  "test_samples": 698,
+  "epochs_trained": 10,
+  "final_metrics": {
+    "plant_train_acc": 0.9932035803794861,
+    "plant_val_acc": 0.9898843765258789,
+    "disease_train_acc": 0.9592214822769165,
+    "disease_val_acc": 0.9219653010368347
+  },
+  "test_metrics": {
+    "plant_accuracy": 0.9914040114613181,
+    "disease_accuracy": 0.9484240687679083
+  }
+}
