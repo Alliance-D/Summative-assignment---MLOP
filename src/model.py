@@ -22,7 +22,7 @@ from tensorflow.keras.callbacks import (
     TensorBoard,
 )
 
-from config import (
+from src.config import (
     MODEL_CONFIG,
     MULTI_OUTPUT_MODEL,
     CLASS_MAPPINGS_FILE,

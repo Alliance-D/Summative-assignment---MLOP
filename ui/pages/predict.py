@@ -17,7 +17,7 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display prediction page"""
-    st.title("🔮 Single Plant Prediction")
+    st.title(" Single Plant Prediction")
     
     st.write("Upload a leaf image to get disease prediction and recommendations.")
     
@@ -27,7 +27,7 @@ def show():
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("📸 Upload Image")
+        st.subheader(" Upload Image")
         uploaded_file = st.file_uploader(
             "Choose a leaf image",
             type=["jpg", "jpeg", "png", "bmp"],
@@ -35,11 +35,11 @@ def show():
         )
         
         if uploaded_file:
-            st.info(f"📄 File: `{uploaded_file.name}`")
-            st.info(f"📊 Size: `{uploaded_file.size / 1024:.1f} KB`")
+            st.info(f" File: `{uploaded_file.name}`")
+            st.info(f" Size: `{uploaded_file.size / 1024:.1f} KB`")
     
     with col2:
-        st.subheader("📝 Image Preview")
+        st.subheader(" Image Preview")
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
             st.image(image, use_container_width=True)
@@ -48,8 +48,8 @@ def show():
     
     # Prediction button
     if uploaded_file is not None:
-        if st.button("🔍 PREDICT", use_container_width=True, type="primary"):
-            with st.spinner("🔄 Analyzing leaf... Please wait..."):
+        if st.button(" PREDICT", use_container_width=True, type="primary"):
+            with st.spinner(" Analyzing leaf... Please wait..."):
                 try:
                     # Reset file pointer
                     uploaded_file.seek(0)
@@ -62,7 +62,7 @@ def show():
                         result = response.json()
                         
                         # Display results
-                        st.success("✅ Prediction Complete!")
+                        st.success(" Prediction Complete!")
                         st.divider()
                         
                         # Main prediction results
@@ -99,12 +99,12 @@ def show():
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            st.subheader("🏆 Top Plant Predictions")
+                            st.subheader(" Top Plant Predictions")
                             for i, pred in enumerate(result.get("top_3_plants", []), 1):
                                 st.write(f"{i}. **{pred['label']}** - {pred['confidence']*100:.1f}%")
                         
                         with col2:
-                            st.subheader("🏆 Top Disease Predictions")
+                            st.subheader(" Top Disease Predictions")
                             for i, pred in enumerate(result.get("top_3_diseases", []), 1):
                                 st.write(f"{i}. **{pred['label']}** - {pred['confidence']*100:.1f}%")
                         
@@ -126,27 +126,27 @@ def show():
                         st.divider()
                         
                         # Additional info
-                        with st.expander("📊 Detailed Results"):
+                        with st.expander(" Detailed Results"):
                             st.json(result)
                         
                     else:
-                        st.error(f"❌ Error: {response.status_code}")
+                        st.error(f" Error: {response.status_code}")
                         st.error(response.text)
                 
                 except requests.exceptions.ConnectionError:
-                    st.error("❌ **Cannot connect to API**")
+                    st.error(" **Cannot connect to API**")
                     st.info("Make sure the API server is running:")
                     st.code("python api/app.py", language="bash")
                 
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+                    st.error(f" Error: {str(e)}")
     
     else:
-        st.info("👆 Please upload an image to get started")
+        st.info(" Please upload an image to get started")
         
         # Example section
         st.divider()
-        st.subheader("ℹ️ How to Use")
+        st.subheader(" How to Use")
         st.write("""
         1. **Upload** a clear image of a plant leaf
         2. Click **PREDICT** button

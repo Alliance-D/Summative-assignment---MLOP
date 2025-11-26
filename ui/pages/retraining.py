@@ -2,7 +2,7 @@
 Retraining Page
 Data upload and retraining trigger interface
 """
-
+import pandas as pd
 import streamlit as st
 import requests
 import time
@@ -16,122 +16,170 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display retraining page"""
-    st.title("🔧 Model Retraining & Management")
+    st.title(" Model Retraining & Management")
     
     st.write("Upload new training data and trigger model retraining to improve performance.")
     
     st.divider()
     
     # Tabs for retraining and management
-    tab1, tab2, tab3 = st.tabs(["📤 Upload Data", "🚀 Trigger Retrain", "📊 Retrain History"])
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Data", " Trigger Retrain", " Retrain History"])
     
     # Tab 1: Upload Data
     with tab1:
         st.subheader("📤 Upload Training Data")
         
-        st.write("""
-        Upload leaf images to build a dataset for retraining.
-        Each image should be clearly labeled with the format: `plant_disease_*.jpg`
+        st.info("""
+        **📋 Filename Format Required:**
         
-        Example: `tomato_early_blight_01.jpg`
+        Your images MUST follow this naming convention:
+        - `PlantName___DiseaseName_number.jpg`
+        - Example: `Tomato___Early_Blight_001.jpg`
+        - Example: `Pepper___Bacterial_Spot_042.jpg`
+        
+        **Note:** Three underscores (___) between plant and disease name!
         """)
         
         uploaded_files = st.file_uploader(
             "Choose leaf images for retraining",
             type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            help="Images must follow naming convention: PlantName___DiseaseName_*.jpg"
         )
         
         if uploaded_files:
-            st.success(f"✅ {len(uploaded_files)} image(s) selected for upload")
+            st.success(f" {len(uploaded_files)} image(s) selected for upload")
+            
+            # Validate filenames
+            valid_files = []
+            invalid_files = []
+            
+            for file in uploaded_files:
+                # Check filename format
+                parts = file.name.rsplit('_', 1)[0] if '_' in file.name else file.name.split('.')[0]
+                if '___' in parts:
+                    valid_files.append(file)
+                else:
+                    invalid_files.append(file.name)
             
             # Show file list
-            with st.expander("📋 Files to upload"):
-                for file in uploaded_files:
-                    st.write(f"- {file.name} ({file.size / 1024:.1f} KB)")
+            with st.expander(" Files to upload"):
+                if valid_files:
+                    st.success(f" Valid files ({len(valid_files)}):")
+                    for file in valid_files:
+                        st.write(f"- {file.name} ({file.size / 1024:.1f} KB)")
+                
+                if invalid_files:
+                    st.error(f" Invalid filenames ({len(invalid_files)}):")
+                    for fname in invalid_files:
+                        st.write(f"- {fname}")
+                    st.warning(" These files will NOT be uploaded due to incorrect naming format")
             
             st.divider()
             
-            # Upload button
-            if st.button("📤 UPLOAD FILES", use_container_width=True, type="primary"):
-                with st.spinner("Uploading files..."):
-                    try:
-                        files_list = [("files", file) for file in uploaded_files]
-                        response = requests.post(
-                            f"{API_URL}/retrain/upload",
-                            files=files_list,
-                            timeout=60
-                        )
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            st.success(f"✅ Upload Complete!")
-                            st.info(f"Successfully saved {result['saved']} out of {result['total']} files")
+            # Upload button (only if there are valid files)
+            if valid_files:
+                if st.button("📤 UPLOAD FILES", use_container_width=True, type="primary"):
+                    with st.spinner("Uploading files..."):
+                        try:
+                            # Only upload valid files
+                            files_list = [("files", file) for file in valid_files]
+                            response = requests.post(
+                                f"{API_URL}/retrain/upload",
+                                files=files_list,
+                                timeout=120
+                            )
                             
-                            if result['errors']:
-                                st.warning("⚠️ Some files failed to upload:")
-                                for error in result['errors']:
-                                    st.write(f"- {error['filename']}: {error['error']}")
-                        else:
-                            st.error(f"❌ Upload failed: {response.status_code}")
-                    
-                    except Exception as e:
-                        st.error(f"❌ Upload Error: {str(e)}")
+                            if response.status_code == 200:
+                                result = response.json()
+                                st.success(f" Upload Complete!")
+                                st.info(f"Successfully uploaded {result['uploaded']} out of {result['total']} files")
+                                
+                                if result['errors']:
+                                    st.warning(" Some files failed to upload:")
+                                    for error in result['errors']:
+                                        st.write(f"- {error['filename']}: {error['error']}")
+                            else:
+                                st.error(f" Upload failed: {response.status_code}")
+                                st.error(response.text)
+                        
+                        except Exception as e:
+                            st.error(f" Upload Error: {str(e)}")
+            else:
+                st.warning(" No valid files to upload. Please check filename format.")
         
         else:
-            st.info("👆 Upload images to get started")
+            st.info("💡 Upload images to get started")
+            st.write("**Example filenames:**")
+            st.code("""
+Tomato___Early_Blight_001.jpg
+Tomato___Late_Blight_002.jpg
+Pepper___Bacterial_Spot_001.jpg
+Potato___Early_Blight_001.jpg
+Tomato___healthy_001.jpg
+            """)
     
     # Tab 2: Trigger Retrain
     with tab2:
-        st.subheader("🚀 Trigger Model Retraining")
+        st.subheader(" Trigger Model Retraining")
         
         # Check current data
         st.write("**Step 1: Check Available Data**")
         
-        if st.button("📊 Check Retrain Data", use_container_width=True):
+        if st.button(" Check Retrain Data", use_container_width=True):
             try:
                 response = requests.get(f"{API_URL}/retrain/status", timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
                     
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Total Samples", data['total_samples'])
                     with col2:
-                        st.metric("Ready to Retrain", "✅ Yes" if data['ready_to_retrain'] else "❌ Need 50+ samples")
+                        st.metric("Minimum Required", data['min_required'])
+                    with col3:
+                        ready_status = " Ready" if data['ready_to_retrain'] else " Not Ready"
+                        st.metric("Status", ready_status)
                     
-                    if data['ready_to_retrain']:
-                        st.success("✅ Sufficient data available for retraining!")
-                    else:
-                        st.warning(f"⚠️ Need {50 - data['total_samples']} more samples")
+                    st.info(f"💡 {data['message']}")
+                    
+                    # Store in session state
+                    st.session_state['retrain_data'] = data
                 else:
-                    st.error("❌ Could not fetch data status")
+                    st.error(" Could not fetch data status")
             
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                st.error(f" Error: {str(e)}")
         
         st.divider()
         
         # Retraining parameters
         st.write("**Step 2: Configure Retraining Parameters**")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
-            epochs = st.slider("Epochs", 5, 50, 20)
+            epochs = st.slider("Epochs", 5, 50, 20, help="Number of training epochs")
         with col2:
-            batch_size = st.selectbox("Batch Size", [16, 32, 64, 128])
-        with col3:
-            learning_rate = st.selectbox("Learning Rate", [1e-4, 5e-4, 1e-3, 5e-3])
+            st.info(f"**Minimum Samples:** 50 (automatic)")
+        
+        st.divider()
         
         st.write("**Step 3: Start Retraining**")
         
-        if st.button("🚀 START RETRAINING", use_container_width=True, type="primary"):
+        # Check if ready
+        ready_to_train = st.session_state.get('retrain_data', {}).get('ready_to_retrain', False)
+        
+        if not ready_to_train:
+            st.warning(" Not enough data for retraining. Click 'Check Retrain Data' first.")
+        
+        if st.button(" START RETRAINING", use_container_width=True, type="primary", disabled=not ready_to_train):
             try:
+                # Trigger retraining with automatic min_samples=50
                 response = requests.post(
                     f"{API_URL}/retrain/trigger",
-                    params={"min_samples": 50},
+                    params={"min_samples": 50, "epochs": epochs},
                     timeout=10
                 )
                 
@@ -139,94 +187,166 @@ def show():
                     result = response.json()
                     
                     if result['triggered']:
-                        st.success("✅ Retraining Started!")
+                        st.success(" Retraining Started!")
                         st.info(f"Using {result['new_samples']} samples for training")
                         
-                        # Simulated progress bar
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                        st.info("""
+                         **Retraining in Progress**
+
+                        Training is running in the background. This may take 5-15 minutes.
                         
-                        for i in range(100):
-                            progress_bar.progress(i + 1)
-                            status_text.text(f"Training progress: {i + 1}%")
-                            time.sleep(0.05)
+                        **To check progress:**
+                        1. Wait a few minutes
+                        2. Go to "Retrain History" tab
+                        3. Refresh to see the latest entry
                         
-                        status_text.text("✅ Retraining Complete!")
-                        
-                        st.success("""
-                        ✅ **Retraining Completed Successfully!**
-                        
-                        - Model: Plant Classifier v1.2
-                        - Accuracy: 94.8% (↑ 0.3%)
-                        - Training Time: 12m 34s
-                        - New Samples: 120
+                        You can continue using the app while training runs.
                         """)
                     else:
-                        st.warning(f"⚠️ Retraining not triggered: {result['reason']}")
+                        st.warning(f" Retraining not triggered: {result['reason']}")
                 else:
-                    st.error(f"❌ Error: {response.status_code}")
+                    st.error(f" Error: {response.status_code}")
+                    st.error(response.text)
             
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                st.error(f" Error: {str(e)}")
     
     # Tab 3: Retrain History
     with tab3:
-        st.subheader("📊 Retraining History")
+        st.subheader(" Retraining History")
         
         st.write("View previous retraining sessions and model versions.")
         
-        # Mock history data
-        history_data = {
-            "Date": ["2025-11-20", "2025-11-18", "2025-11-16", "2025-11-14"],
-            "Version": ["v1.2", "v1.1", "v1.0", "Initial"],
-            "Accuracy": ["94.8%", "94.5%", "92.1%", "88.3%"],
-            "Training Time": ["12m 34s", "14m 22s", "16m 45s", "18m 10s"],
-            "Samples Used": ["120", "95", "80", "50,000"],
-            "Status": ["✅ Complete", "✅ Complete", "✅ Complete", "✅ Complete"]
-        }
-        
-        st.dataframe(history_data, use_container_width=True, hide_index=True)
+        # Add refresh button
+        if st.button(" Refresh History", use_container_width=True):
+            st.rerun()
         
         st.divider()
         
-        # Model version details
-        st.subheader("📋 Model Version Details")
+        try:
+            # Fetch REAL retraining history from database
+            history_response = requests.get(f"{API_URL}/retrain/history?limit=20", timeout=10)
+            
+            if history_response.status_code == 200:
+                history_data = history_response.json()
+                
+                # Filter out upload entries for main table
+                training_sessions = [h for h in history_data if h['status'] != 'upload']
+                
+                if training_sessions and len(training_sessions) > 0:
+                    # Convert to DataFrame
+                    df = pd.DataFrame(training_sessions)
+                    
+                    # Format columns
+                    if 'timestamp' in df.columns:
+                        df['Date'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+                    
+                    if 'training_time_seconds' in df.columns:
+                        df['Training Time'] = df['training_time_seconds'].apply(
+                            lambda x: f"{int(x//60)}m {int(x%60)}s" if pd.notnull(x) and x > 0 else "N/A"
+                        )
+                    
+                    if 'plant_accuracy' in df.columns:
+                        df['Plant Acc'] = df['plant_accuracy'].apply(
+                            lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x > 0 else "N/A"
+                        )
+                    
+                    if 'disease_accuracy' in df.columns:
+                        df['Disease Acc'] = df['disease_accuracy'].apply(
+                            lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x > 0 else "N/A"
+                        )
+                    
+                    # Add status emoji
+                    if 'status' in df.columns:
+                        status_map = {
+                            'success': ' Success',
+                            'failed': ' Failed',
+                            'error': ' Error',
+                            'in_progress': ' Running'
+                        }
+                        df['Status'] = df['status'].map(lambda x: status_map.get(x, x))
+                    
+                    # Select and display columns
+                    display_cols = []
+                    col_names = {}
+                    
+                    for col, display_name in [
+                        ('version', 'Version'),
+                        ('Date', 'Date'),
+                        ('samples_used', 'Samples'),
+                        ('epochs', 'Epochs'),
+                        ('Plant Acc', 'Plant Acc'),
+                        ('Disease Acc', 'Disease Acc'),
+                        ('Training Time', 'Time'),
+                        ('Status', 'Status')
+                    ]:
+                        if col in df.columns:
+                            display_cols.append(col)
+                            col_names[col] = display_name
+                    
+                    display_df = df[display_cols].rename(columns=col_names)
+                    
+                    # Show table
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    
+                    st.divider()
+                    
+                    # Show details of selected version
+                    st.subheader(" Version Details")
+                    
+                    versions = [item['version'] for item in training_sessions]
+                    selected_version = st.selectbox("Select Version", versions)
+                    
+                    # Find selected version data
+                    version_data = next((item for item in training_sessions if item['version'] == selected_version), None)
+                    
+                    if version_data:
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write(f"**Version:** `{version_data['version']}`")
+                            st.write(f"**Date:** {version_data['timestamp'][:19]}")
+                            st.write(f"**Samples Used:** {version_data.get('samples_used', 'N/A')}")
+                            st.write(f"**Epochs:** {version_data.get('epochs', 'N/A')}")
+                        
+                        with col2:
+                            plant_acc = version_data.get('plant_accuracy')
+                            disease_acc = version_data.get('disease_accuracy')
+                            
+                            if plant_acc and plant_acc > 0:
+                                st.metric("Plant Accuracy", f"{plant_acc*100:.2f}%")
+                            else:
+                                st.write("**Plant Accuracy:** N/A")
+                            
+                            if disease_acc and disease_acc > 0:
+                                st.metric("Disease Accuracy", f"{disease_acc*100:.2f}%")
+                            else:
+                                st.write("**Disease Accuracy:** N/A")
+                            
+                            training_time = version_data.get('training_time_seconds')
+                            if training_time and training_time > 0:
+                                st.write(f"**Training Time:** {int(training_time//60)}m {int(training_time%60)}s")
+                            
+                            status = version_data.get('status', 'N/A')
+                            status_color = {
+                                'success': 'green',
+                                'failed': 'red',
+                                'error': 'orange'
+                            }.get(status, 'gray')
+                            st.write(f"**Status:** :{status_color}[{status.upper()}]")
+                        
+                        if version_data.get('notes'):
+                            st.info(f"💡 **Notes:** {version_data['notes']}")
+                
+                else:
+                    st.info(" No retraining history yet. Trigger a retraining to see history here.")
+            
+            else:
+                st.warning(" Could not fetch retraining history from API")
+                if history_response.status_code == 404:
+                    st.error("Endpoint not found. Make sure your API is updated.")
         
-        selected_version = st.selectbox("Select Version", ["v1.2", "v1.1", "v1.0"])
-        
-        if selected_version == "v1.2":
-            st.write("""
-            **Version v1.2** (Latest)
-            - Date: 2025-11-20
-            - Accuracy: 94.8%
-            - Precision: 94.6%
-            - Recall: 94.9%
-            - F1-Score: 0.948
-            - Samples: 120
-            - Training Time: 12m 34s
-            - Status: Active
-            """)
-        elif selected_version == "v1.1":
-            st.write("""
-            **Version v1.1**
-            - Date: 2025-11-18
-            - Accuracy: 94.5%
-            - Precision: 94.3%
-            - Recall: 94.6%
-            - F1-Score: 0.945
-            - Samples: 95
-            - Training Time: 14m 22s
-            - Status: Backup
-            """)
-        else:
-            st.write("""
-            **Version v1.0** (Original)
-            - Date: 2025-11-16
-            - Accuracy: 92.1%
-            - Precision: 91.8%
-            - Recall: 92.3%
-            - F1-Score: 0.921
-            - Samples: 80
-            - Training Time: 16m 45s
-            - Status: Archived
-            """)
+        except requests.exceptions.ConnectionError:
+            st.error(" Cannot connect to API. Make sure it's running at http://localhost:8000")
+        except Exception as e:
+            st.error(f" Error fetching history: {str(e)}")

@@ -16,8 +16,8 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCh
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from PIL import Image
 
-from model import MultiOutputPlantDiseaseDetector
-from config import (
+from src.model import MultiOutputPlantDiseaseDetector
+from src.config import (
     MULTI_OUTPUT_MODEL,
     CLASS_MAPPINGS_FILE,
     MODEL_METADATA_FILE,
@@ -480,11 +480,12 @@ class RetrainingPipeline:
             results = {
                 "status": "success",
                 "epochs_trained": len(history.history['loss']),
+                "samples_used": train_gen.n,
                 "final_metrics": {
-                    "plant_train_acc": float(history.history['plant_output_accuracy'][-1]),
-                    "plant_val_acc": float(history.history['val_plant_output_accuracy'][-1]),
-                    "disease_train_acc": float(history.history['disease_output_accuracy'][-1]),
-                    "disease_val_acc": float(history.history['val_disease_output_accuracy'][-1]),
+                "plant_train_acc": float(history.history['plant_output_accuracy'][-1]),
+                "plant_val_acc": float(history.history['val_plant_output_accuracy'][-1]),
+                "disease_train_acc": float(history.history['disease_output_accuracy'][-1]),
+                "disease_val_acc": float(history.history['val_disease_output_accuracy'][-1]),
                 },
                 "timestamp": datetime.now().isoformat()
             }
@@ -497,6 +498,21 @@ class RetrainingPipeline:
                 "status": "failed",
                 "error": str(e)
             }
+        finally:
+            # ALWAYS clean up temp directories
+            try:
+                temp_train = RETRAIN_DATA_DIR / "temp_train"
+                temp_val = RETRAIN_DATA_DIR / "temp_val"
+                
+                if temp_train.exists():
+                    shutil.rmtree(temp_train)
+                    logger.info(f" Cleaned up {temp_train}")
+                
+                if temp_val.exists():
+                    shutil.rmtree(temp_val)
+                    logger.info(f" Cleaned up {temp_val}")
+            except Exception as e:
+                logger.warning(f" Failed to clean temp directories: {str(e)}")
 
     def save_retrained_model(self, version: Optional[str] = None) -> str:
         """

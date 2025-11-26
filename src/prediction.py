@@ -11,7 +11,7 @@ import tensorflow as tf
 from PIL import Image
 import cv2
 
-from config import (
+from src.config import (
     MULTI_OUTPUT_MODEL,
     CLASS_MAPPINGS_FILE,
     MODEL_METADATA_FILE,
