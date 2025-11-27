@@ -3,9 +3,13 @@ Streamlit UI Configuration
 Main entry point for the Streamlit application
 """
 
+import os
 import streamlit as st
 from pathlib import Path
 import sys
+
+# Get API URL from environment or use default
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
