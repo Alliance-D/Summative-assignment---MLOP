@@ -232,13 +232,21 @@ LOG_LEVEL=INFO
 
 ##  Demo Video
 
-**YouTube Link**: 
+**YouTube Link**: https://youtu.be/W6T_-tPZwww
 
 ## For full documentation: 
 - check: `PROJECT_COMPLETE.md`
 
 ## Report
-- Link: 
+- Link: https://docs.google.com/document/d/13Cquu0dcALNsuNpI_-22FQENHPQOcjmPQAcb5ZtGPVY/edit?usp=sharing
 
 ## Locust report
+some of the screenshots are in the project report.
+the detailed locust report; https://drive.google.com/file/d/1m4RA1Gdt-mwsyWPl4y_BXuQQxS8zlzdy/view?usp=sharing
+
+## App link
+https://plant-diseasedetector.streamlit.app/
+
+## Render link
+https://plant-disease-api-4ttc.onrender.com in case you want to test the api working.
 
