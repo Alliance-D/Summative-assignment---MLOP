@@ -43,7 +43,7 @@ def show():
         st.subheader(" Image Preview")
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
-            st.image(image, width=700)
+            st.image(image, use_container_width=True)
     
     st.divider()
     
