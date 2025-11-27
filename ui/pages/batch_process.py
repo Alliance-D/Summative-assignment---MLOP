@@ -54,7 +54,7 @@ def show():
         
         # Process button
         if st.button(" PROCESS BATCH", use_container_width=True, type="primary"):
-            with st.spinner(f"🔄 Processing {len(uploaded_files)} images..."):
+            with st.spinner(f" Processing {len(uploaded_files)} images..."):
                 try:
                     # Prepare files for API
                     files = []

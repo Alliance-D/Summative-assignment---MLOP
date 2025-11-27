@@ -66,7 +66,7 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "📱 **Plant Disease Detection System**\n\n"
+    " **Plant Disease Detection System**\n\n"
     "Two-stage ML Pipeline for accurate plant disease diagnosis"
 )
 

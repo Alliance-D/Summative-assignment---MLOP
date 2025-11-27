@@ -41,7 +41,7 @@ STEP 2: DATA PREPARATION
     data/
     ├── train/      (70% of images)
     ├── test/       (15% of images)
-    ├── val/       (150% of images)
+    ├── val/       (15% of images)
     └── retrain/    (for future retraining)
 
 ═════════════════════════════════════════════════════════════════

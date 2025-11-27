@@ -380,7 +380,7 @@ class PredictionDatabase:
                 deleted = cursor.rowcount
                 conn.commit()
                 
-                logger.info(f"🗑️ Deleted {deleted} old predictions")
+                logger.info(f" Deleted {deleted} old predictions")
                 return deleted
         
         except Exception as e:
