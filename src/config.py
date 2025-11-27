@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 import json
 
+# Detect environment
+IS_PRODUCTION = os.getenv("RENDER") is not None
+
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data"

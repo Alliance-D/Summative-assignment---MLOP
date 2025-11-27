@@ -877,12 +877,18 @@ async def global_exception_handler(request, exc):
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info(" Starting FastAPI server...")
+    # Get port from environment variable (Render provides this)
+    port = int(os.getenv("PORT", API_CONFIG["port"]))
+    
+    # Detect if running in production
+    is_production = os.getenv("RENDER") is not None
+    
+    logger.info(f"Starting FastAPI server on port {port}...")
     
     uvicorn.run(
         app,
-        host=API_CONFIG["host"],
-        port=API_CONFIG["port"],
-        reload=API_CONFIG["reload"],
+        host="0.0.0.0",  # Must be 0.0.0.0 for Render
+        port=port,
+        reload=not is_production,  # Disable reload in production
         log_level="info"
     )
