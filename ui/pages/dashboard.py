@@ -17,7 +17,7 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display dashboard page"""
-    st.title("📊 System Dashboard")
+    st.title(" System Dashboard")
     st.write("Monitor system health, model status, and performance metrics")
     
     st.divider()
@@ -25,7 +25,7 @@ def show():
     # Auto-refresh toggle
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.subheader("🔄 Live Status")
+        st.subheader(" Live Status")
     with col2:
         auto_refresh = st.checkbox("Auto-refresh (5s)", value=False)
     
@@ -59,30 +59,30 @@ def show():
         
         with col1:
             if health_data and health_data.get("status") == "healthy":
-                st.success("✅ **API Status**\n\nHealthy")
+                st.success(" **API Status**\n\nHealthy")
             else:
-                st.error("❌ **API Status**\n\nUnhealthy")
+                st.error(" **API Status**\n\nUnhealthy")
         
         with col2:
             if status_data and status_data.get("model_loaded"):
-                st.success("✅ **Model Status**\n\nLoaded")
+                st.success(" **Model Status**\n\nLoaded")
             else:
-                st.error("❌ **Model Status**\n\nNot Loaded")
+                st.error(" **Model Status**\n\nNot Loaded")
         
         with col3:
             if status_data and status_data.get("retraining_in_progress"):
-                st.warning("🔄 **Retraining**\n\nIn Progress")
+                st.warning(" **Retraining**\n\nIn Progress")
             else:
-                st.info("⏸️ **Retraining**\n\nIdle")
+                st.info(" **Retraining**\n\nIdle")
         
         with col4:
             uptime_hours = health_data.get("uptime_seconds", 0) / 3600 if health_data else 0
-            st.info(f"⏱️ **Uptime**\n\n{uptime_hours:.1f} hours")
+            st.info(f" **Uptime**\n\n{uptime_hours:.1f} hours")
         
         st.divider()
         
         # Model Information
-        st.subheader("🤖 Model Information")
+        st.subheader(" Model Information")
         
         if model_data:
             col1, col2 = st.columns(2)
@@ -107,12 +107,12 @@ def show():
                         if len(model_data["disease_classes"]) > 10:
                             st.write(f"... and {len(model_data['disease_classes']) - 10} more")
         else:
-            st.warning("⚠️ Could not fetch model information")
+            st.warning(" Could not fetch model information")
         
         st.divider()
         
         # Performance Metrics
-        st.subheader("📈 Performance Metrics")
+        st.subheader(" Performance Metrics")
         
         if metrics_data and "predictions" in metrics_data:
             pred_metrics = metrics_data["predictions"]
@@ -150,12 +150,12 @@ def show():
             # Progress bar for success rate
             st.progress(success_rate / 100, text=f"Success Rate: {success_rate:.1f}%")
         else:
-            st.info("📊 No predictions made yet")
+            st.info(" No predictions made yet")
         
         st.divider()
         
         # System Information
-        st.subheader("💻 System Information")
+        st.subheader(" System Information")
         
         col1, col2 = st.columns(2)
         
@@ -177,16 +177,16 @@ def show():
         # Refresh button
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            if st.button("🔄 Refresh Data", use_container_width=True):
+            if st.button(" Refresh Data", use_container_width=True):
                 st.rerun()
         with col2:
-            if st.button("📊 View Metrics", use_container_width=True):
+            if st.button(" View Metrics", use_container_width=True):
                 st.switch_page("ui/pages/metrics.py")
     
     except requests.exceptions.ConnectionError:
-        st.error("❌ **Cannot connect to API**")
+        st.error(" **Cannot connect to API**")
         st.info("Please make sure the API is running at `http://localhost:8000`")
         st.code("python api/app.py", language="bash")
     
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f" Error: {str(e)}")

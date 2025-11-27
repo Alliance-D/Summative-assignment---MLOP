@@ -23,14 +23,14 @@ def show():
     st.divider()
     
     # Tabs for retraining and management
-    tab1, tab2, tab3 = st.tabs(["📤 Upload Data", " Trigger Retrain", " Retrain History"])
+    tab1, tab2, tab3 = st.tabs([" Upload Data", " Trigger Retrain", " Retrain History"])
     
     # Tab 1: Upload Data
     with tab1:
-        st.subheader("📤 Upload Training Data")
+        st.subheader(" Upload Training Data")
         
         st.info("""
-        **📋 Filename Format Required:**
+        ** Filename Format Required:**
         
         Your images MUST follow this naming convention:
         - `PlantName___DiseaseName_number.jpg`
@@ -210,6 +210,26 @@ Tomato___healthy_001.jpg
             
             except Exception as e:
                 st.error(f" Error: {str(e)}")
+                
+        st.divider()
+
+        st.write("**Step 4: Clear Training Data (Optional)**")
+
+        if st.button("Clear All Uploaded Data", type="secondary", use_container_width=True):
+            try:
+                response = requests.delete(f"{API_URL}/retrain/data", timeout=10)
+                
+                if response.status_code == 200:
+                    st.success("All retrain data cleared! You can upload new samples now.")
+                    # Clear session state
+                    if 'retrain_data' in st.session_state:
+                        del st.session_state['retrain_data']
+                else:
+                    st.error(f"Failed to clear data: {response.text}")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+        st.info("Note: Training data is automatically cleared after successful retraining")
     
     # Tab 3: Retrain History
     with tab3:

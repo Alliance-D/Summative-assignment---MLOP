@@ -19,7 +19,7 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display metrics page"""
-    st.title("📊 Model Metrics & Evaluation")
+    st.title(" Model Metrics & Evaluation")
     
     st.write("Comprehensive model performance evaluation and real-time metrics")
     
@@ -28,9 +28,9 @@ def show():
     # Refresh button
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.subheader("🎯 Key Performance Metrics")
+        st.subheader(" Key Performance Metrics")
     with col2:
-        if st.button("🔄 Refresh", use_container_width=True):
+        if st.button(" Refresh", use_container_width=True):
             st.rerun()
     
     try:
@@ -67,7 +67,7 @@ def show():
             st.divider()
             
             # Model Information Section
-            st.subheader("🤖 Model Information")
+            st.subheader(" Model Information")
             
             if model_info:
                 col1, col2, col3 = st.columns(3)
@@ -102,14 +102,14 @@ def show():
             
             # Tabs for detailed metrics
             tab1, tab2, tab3 = st.tabs([
-                "📊 Performance Overview",
-                "🎯 Prediction Distribution",
-                "⏱️ Response Times"
+                " Performance Overview",
+                " Prediction Distribution",
+                " Response Times"
             ])
             
             # Tab 1: Performance Overview
             with tab1:
-                st.subheader("📈 Model Performance Overview")
+                st.subheader(" Model Performance Overview")
                 
                 if total > 0:
                     # Success rate gauge
@@ -152,11 +152,11 @@ def show():
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("📊 No predictions made yet. Try the prediction page to generate metrics!")
+                    st.info(" No predictions made yet. Try the prediction page to generate metrics!")
             
             # Tab 2: Prediction Distribution
             with tab2:
-                st.subheader("🎯 Prediction Distribution")
+                st.subheader(" Prediction Distribution")
                 
                 if total > 0:
                     st.write("**Predictions by Status**")
@@ -202,11 +202,11 @@ def show():
                     This data is collected during predictions and stored for analysis.
                     """)
                 else:
-                    st.info("📊 Make some predictions to see distribution metrics!")
+                    st.info(" Make some predictions to see distribution metrics!")
             
             # Tab 3: Response Times
             with tab3:
-                st.subheader("⚡ Response Time Analysis")
+                st.subheader(" Response Time Analysis")
                 
                 st.write("**System Performance**")
                 
@@ -246,12 +246,12 @@ def show():
                     - Optimize by batching multiple predictions
                     """)
                 else:
-                    st.info("⏱️ Response time data will appear after predictions are made")
+                    st.info(" Response time data will appear after predictions are made")
             
             st.divider()
             
             # System Health
-            st.subheader("🏥 System Health")
+            st.subheader(" System Health")
             
             uptime = metrics_data.get("uptime", {})
             uptime_hours = uptime.get("uptime_hours", 0)
@@ -262,7 +262,7 @@ def show():
                 st.metric("API Uptime", f"{uptime_hours:.1f} hours")
             
             with col2:
-                model_status = "✅ Loaded" if model_info else "❌ Not Loaded"
+                model_status = " Loaded" if model_info else " Not Loaded"
                 st.metric("Model Status", model_status)
             
             with col3:
@@ -272,7 +272,7 @@ def show():
             st.divider()
             
             # Export metrics
-            st.subheader("💾 Export Metrics")
+            st.subheader(" Export Metrics")
             
             if st.button("📥 Download Metrics Report", use_container_width=True):
                 import json
@@ -294,16 +294,16 @@ def show():
                 )
         
         else:
-            st.error("❌ Could not fetch metrics from API")
+            st.error(" Could not fetch metrics from API")
             st.info(f"Status code: {metrics_response.status_code}")
     
     except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to API")
+        st.error(" Cannot connect to API")
         st.info("Make sure the API server is running:")
         st.code("python api/app.py", language="bash")
     
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f" Error: {str(e)}")
 
 
 if __name__ == "__main__":

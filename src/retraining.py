@@ -1,5 +1,5 @@
 """
-Retraining Pipeline for Multi-Output Model
+Retraining Pipeline for Multi-Output Model 
 Handles automated model retraining with new data
 """
 
@@ -57,47 +57,96 @@ class MultiLabelDataGenerator(tf.keras.utils.Sequence):
         self.indexes = np.arange(self.n)
         if self.shuffle:
             np.random.shuffle(self.indexes)
+        
+        logger.info(f"Generator initialized: {self.n} samples, {self.num_plants} plants, {self.num_diseases} diseases")
     
     def _collect_samples(self):
         """Collect image samples from directory"""
+        logger.info(f"Collecting samples from: {self.directory}")
+        
+        if not self.directory.exists():
+            logger.error(f"Directory does not exist: {self.directory}")
+            return
+        
+        # Get available classes
+        available_plants = set(self.plant_to_idx.keys())
+        available_diseases = set(self.disease_to_idx.keys())
+        
+        logger.info(f"Looking for plants: {available_plants}")
+        logger.info(f"Looking for diseases: {available_diseases}")
+        
         for class_dir in self.directory.iterdir():
             if not class_dir.is_dir():
                 continue
             
             # Parse class name: "Plant___Disease" or "Plant__variety___Disease"
             class_name = class_dir.name
-            parts = class_name.split('___')
             
+            if '___' not in class_name:
+                logger.warning(f"Skipping malformed class (no ___): {class_name}")
+                continue
+            
+            parts = class_name.split('___')
             if len(parts) != 2:
-                logger.warning(f" Skipping malformed class: {class_name}")
+                logger.warning(f"Skipping malformed class (wrong format): {class_name}")
                 continue
             
             # Extract plant and disease
-            plant = parts[0].split('__')[0]  # Remove variety if exists
-            disease = parts[1]
+            plant_raw = parts[0]
+            disease_raw = parts[1]
+            
+            # Remove variety suffix (e.g., "Tomato__Cherry" -> "Tomato")
+            plant = plant_raw.split('__')[0] if '__' in plant_raw else plant_raw
+            disease = disease_raw
+            
+            logger.info(f"Found class dir: {class_name} -> Plant: {plant}, Disease: {disease}")
             
             # Check if in mappings
-            if plant not in self.plant_to_idx or disease not in self.disease_to_idx:
-                logger.warning(f" Skipping unknown class: {plant} - {disease}")
+            if plant not in self.plant_to_idx:
+                logger.warning(f"Plant '{plant}' not in model classes. Available: {available_plants}")
                 continue
             
-            # Collect images
+            if disease not in self.disease_to_idx:
+                logger.warning(f"Disease '{disease}' not in model classes. Available: {available_diseases}")
+                continue
+            
+            # Collect images (handle both lowercase and uppercase extensions)
+            image_count = 0
             for img_path in class_dir.glob('*'):
-                if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp']:
+                ext = img_path.suffix.lower()
+                if ext in ['.jpg', '.jpeg', '.png', '.bmp']:
                     self.samples.append({
                         'path': img_path,
                         'plant': plant,
                         'disease': disease
                     })
+                    image_count += 1
+            
+            if image_count > 0:
+                logger.info(f"  Added {image_count} images from {class_name}")
+            else:
+                logger.warning(f"  No valid images found in {class_name}")
         
-        logger.info(f" Collected {len(self.samples)} samples from {self.directory}")
+        logger.info(f"TOTAL COLLECTED: {len(self.samples)} samples")
     
     def __len__(self):
         """Number of batches per epoch"""
+        if self.n == 0:
+            return 0
         return int(np.ceil(self.n / self.batch_size))
     
     def __getitem__(self, index):
         """Generate one batch of data"""
+        if self.n == 0:
+            # Return empty arrays with correct shape
+            return (
+                np.zeros((0, *self.img_size, 3), dtype=np.float32),
+                {
+                    'plant_output': np.zeros((0, self.num_plants), dtype=np.float32),
+                    'disease_output': np.zeros((0, self.num_diseases), dtype=np.float32)
+                }
+            )
+        
         batch_indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
         
         batch_images = []
@@ -130,8 +179,19 @@ class MultiLabelDataGenerator(tf.keras.utils.Sequence):
                 batch_disease_labels.append(disease_label)
                 
             except Exception as e:
-                logger.error(f" Error loading {sample['path']}: {str(e)}")
+                logger.error(f"Error loading {sample['path']}: {str(e)}")
                 continue
+        
+        # Ensure we have data
+        if len(batch_images) == 0:
+            logger.error(f"Batch {index} has 0 valid images!")
+            return (
+                np.zeros((0, *self.img_size, 3), dtype=np.float32),
+                {
+                    'plant_output': np.zeros((0, self.num_plants), dtype=np.float32),
+                    'disease_output': np.zeros((0, self.num_diseases), dtype=np.float32)
+                }
+            )
         
         return (
             np.array(batch_images),
@@ -143,7 +203,7 @@ class MultiLabelDataGenerator(tf.keras.utils.Sequence):
     
     def on_epoch_end(self):
         """Shuffle indexes after each epoch"""
-        if self.shuffle:
+        if self.shuffle and self.n > 0:
             np.random.shuffle(self.indexes)
 
 
@@ -179,7 +239,7 @@ class RetrainingPipeline:
             Path to backup directory
         """
         if not MULTI_OUTPUT_MODEL.exists():
-            logger.warning(" No existing model to backup")
+            logger.warning("No existing model to backup")
             return None
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -191,7 +251,7 @@ class RetrainingPipeline:
             if MULTI_OUTPUT_MODEL.exists():
                 backup_model_dir = backup_dir / MULTI_OUTPUT_MODEL.name
                 shutil.copytree(str(MULTI_OUTPUT_MODEL), str(backup_model_dir))
-                logger.info(f" Model backed up to {backup_model_dir}")
+                logger.info(f"Model backed up to {backup_model_dir}")
 
             # Backup mappings
             if CLASS_MAPPINGS_FILE.exists():
@@ -201,11 +261,11 @@ class RetrainingPipeline:
             if MODEL_METADATA_FILE.exists():
                 shutil.copy2(MODEL_METADATA_FILE, backup_dir / MODEL_METADATA_FILE.name)
 
-            logger.info(f" Backup created at {backup_dir}")
+            logger.info(f"Backup created at {backup_dir}")
             return backup_dir
 
         except Exception as e:
-            logger.error(f" Backup failed: {str(e)}")
+            logger.error(f"Backup failed: {str(e)}")
             return None
 
     def check_new_data(self) -> Dict:
@@ -213,29 +273,107 @@ class RetrainingPipeline:
         Check if new training data is available
         
         Returns:
-            Dictionary with data statistics
+            Dictionary with data statistics (returns total files before train/val split)
         """
-        # Count images in retrain directory
-        image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp']
-        total_images = 0
+        logger.info(f"Checking for new data in: {RETRAIN_DATA_DIR}")
         
-        for ext in image_extensions:
-            total_images += len(list(RETRAIN_DATA_DIR.rglob(ext)))
+        # Count images in PlantVillage subdirectory
+        plant_village_dir = RETRAIN_DATA_DIR / "PlantVillage"
+        
+        if not plant_village_dir.exists():
+            logger.warning(f"PlantVillage directory not found: {plant_village_dir}")
+            return {
+                "total_samples": 0,
+                "ready_to_retrain": False,
+                "min_required": RETRAINING_CONFIG.get("min_samples", 50),
+                "data_dir": str(RETRAIN_DATA_DIR),
+                "message": "PlantVillage directory not found. Upload some images first."
+            }
+        
+        # Load class mappings to validate
+        self.load_class_mappings()
+        
+        # Count all images in class subdirectories
+        image_extensions = ['.jpg', '.jpeg', '.png', '.bmp']
+        total_images = 0
+        valid_images = 0
+        class_counts = {}
+        invalid_classes = []
+        
+        for class_dir in plant_village_dir.iterdir():
+            if class_dir.is_dir():
+                count = 0
+                for ext in image_extensions:
+                    count += len(list(class_dir.glob(f'*{ext}')))
+                    count += len(list(class_dir.glob(f'*{ext.upper()}')))
+                
+                if count > 0:
+                    total_images += count
+                    
+                    # Check if class is valid
+                    class_name = class_dir.name
+                    if '___' in class_name:
+                        parts = class_name.split('___')
+                        plant = parts[0].split('__')[0]
+                        disease = parts[1]
+                        
+                        if plant in self.plant_to_idx and disease in self.disease_to_idx:
+                            class_counts[class_name] = count
+                            valid_images += count
+                        else:
+                            invalid_classes.append({
+                                'class': class_name,
+                                'count': count,
+                                'plant_valid': plant in self.plant_to_idx,
+                                'disease_valid': disease in self.disease_to_idx
+                            })
+        
+        logger.info(f"Found {total_images} total images, {valid_images} valid for model classes")
+        
+        if invalid_classes:
+            logger.warning(f"Found {len(invalid_classes)} invalid class directories:")
+            for inv in invalid_classes:
+                logger.warning(f"  - {inv['class']}: {inv['count']} images (Plant valid: {inv['plant_valid']}, Disease valid: {inv['disease_valid']})")
+        
+        for class_name, count in class_counts.items():
+            logger.info(f"  Valid: {class_name}: {count} images")
 
-        # Check if ready for retraining
+        # Check if ready for retraining (use valid images only)
         min_samples = RETRAINING_CONFIG.get("min_samples", 50)
-        ready = total_images >= min_samples
+        ready = valid_images >= min_samples
+
+        message = f"Found {valid_images} valid samples across {len(class_counts)} classes"
+        if invalid_classes:
+            message += f" ({total_images - valid_images} images in invalid classes)"
+        message += f". {'Ready' if ready else f'Need {min_samples - valid_images} more valid samples'} for retraining."
 
         stats = {
-            "total_samples": total_images,
+            "total_samples": valid_images,  # Return total valid files (before split)
+            "total_files": total_images,
             "ready_to_retrain": ready,
             "min_required": min_samples,
             "data_dir": str(RETRAIN_DATA_DIR),
-            "message": f"Found {total_images} samples. {'Ready' if ready else f'Need {min_samples - total_images} more'} for retraining."
+            "class_counts": class_counts,
+            "invalid_classes": invalid_classes,
+            "message": message
         }
 
-        logger.info(f" Data check: {total_images} samples ({' Ready' if ready else ' Not ready'})")
         return stats
+    
+    def clear_retrain_data(self):
+        """Clear all data in the retrain directory after successful retraining"""
+        plant_village_dir = RETRAIN_DATA_DIR / "PlantVillage"
+        
+        if plant_village_dir.exists():
+            try:
+                shutil.rmtree(plant_village_dir)
+                plant_village_dir.mkdir(parents=True, exist_ok=True)
+                logger.info("Cleared retrain data directory")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to clear retrain data: {str(e)}")
+                return False
+        return True
 
     def load_class_mappings(self) -> bool:
         """
@@ -249,10 +387,12 @@ class RetrainingPipeline:
                 mappings = json.load(f)
                 self.plant_to_idx = mappings['plant_to_idx']
                 self.disease_to_idx = mappings['disease_to_idx']
-            logger.info(f" Loaded class mappings: {len(self.plant_to_idx)} plants, {len(self.disease_to_idx)} diseases")
+            logger.info(f"Loaded class mappings: {len(self.plant_to_idx)} plants, {len(self.disease_to_idx)} diseases")
+            logger.info(f"Valid plants: {list(self.plant_to_idx.keys())}")
+            logger.info(f"Valid diseases: {list(self.disease_to_idx.keys())}")
             return True
         else:
-            logger.error(f" Class mappings not found at {CLASS_MAPPINGS_FILE}")
+            logger.error(f"Class mappings not found at {CLASS_MAPPINGS_FILE}")
             return False
 
     def prepare_data_generators(self, val_split: float = 0.15) -> Tuple[Optional[MultiLabelDataGenerator], Optional[MultiLabelDataGenerator]]:
@@ -265,17 +405,17 @@ class RetrainingPipeline:
         Returns:
             Tuple of (train_generator, val_generator)
         """
-        logger.info(f" Preparing data generators from {RETRAIN_DATA_DIR}")
+        logger.info(f"Preparing data generators from {RETRAIN_DATA_DIR}")
 
         # Load class mappings
         if not self.load_class_mappings():
-            logger.error(" Cannot prepare generators without class mappings")
+            logger.error("Cannot prepare generators without class mappings")
             return None, None
 
         # Check for PlantVillage subdirectory
         plant_village_dir = RETRAIN_DATA_DIR / "PlantVillage"
         if not plant_village_dir.exists():
-            logger.error(f" PlantVillage directory not found in {RETRAIN_DATA_DIR}")
+            logger.error(f"PlantVillage directory not found in {RETRAIN_DATA_DIR}")
             return None, None
 
         # Create ImageDataGenerator for augmentation
@@ -307,25 +447,45 @@ class RetrainingPipeline:
         train_dir.mkdir(parents=True, exist_ok=True)
         val_dir.mkdir(parents=True, exist_ok=True)
 
-        # Split data
+        # Split data - only valid classes
         total_samples = 0
+        valid_classes = 0
+        
         for class_dir in plant_village_dir.iterdir():
             if not class_dir.is_dir():
+                continue
+            
+            # Validate class
+            class_name = class_dir.name
+            if '___' not in class_name:
+                logger.warning(f"Skipping {class_name}: invalid format")
+                continue
+            
+            parts = class_name.split('___')
+            plant = parts[0].split('__')[0]
+            disease = parts[1]
+            
+            # Skip if not in model classes
+            if plant not in self.plant_to_idx or disease not in self.disease_to_idx:
+                logger.warning(f"Skipping {class_name}: not in model classes")
                 continue
             
             # Get all images
             images = [f for f in class_dir.glob('*') if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp']]
             
             if len(images) == 0:
+                logger.warning(f"No images found in {class_dir.name}")
                 continue
+            
+            logger.info(f"Processing {len(images)} images from {class_dir.name}")
             
             # Shuffle
             np.random.shuffle(images)
             
             # Split
-            split_idx = int(len(images) * (1 - val_split))
+            split_idx = max(1, int(len(images) * (1 - val_split)))  # At least 1 train image
             train_images = images[:split_idx]
-            val_images = images[split_idx:]
+            val_images = images[split_idx:] if split_idx < len(images) else images[-1:]
             
             # Create class directories
             train_class_dir = train_dir / class_dir.name
@@ -340,8 +500,14 @@ class RetrainingPipeline:
                 shutil.copy2(img, val_class_dir / img.name)
             
             total_samples += len(images)
+            valid_classes += 1
+            logger.info(f"  Split: {len(train_images)} train, {len(val_images)} val")
 
-        logger.info(f" Split {total_samples} samples into train/val")
+        if total_samples == 0:
+            logger.error("No valid samples found for training!")
+            return None, None
+
+        logger.info(f"Total split: {total_samples} samples from {valid_classes} valid classes")
 
         # Create generators
         try:
@@ -365,11 +531,19 @@ class RetrainingPipeline:
                 shuffle=False
             )
 
-            logger.info(f" Generators created: {len(train_gen)} train batches, {len(val_gen)} val batches")
+            logger.info(f"Train generator: {len(train_gen)} batches, {train_gen.n} samples")
+            logger.info(f"Val generator: {len(val_gen)} batches, {val_gen.n} samples")
+            
+            if train_gen.n == 0:
+                logger.error("Training generator has 0 samples!")
+                return None, None
+            
             return train_gen, val_gen
 
         except Exception as e:
-            logger.error(f" Error creating generators: {str(e)}")
+            logger.error(f"Error creating generators: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None, None
 
     def retrain_model(
@@ -387,8 +561,14 @@ class RetrainingPipeline:
         Returns:
             Training results and metrics
         """
-        logger.info(" Starting model retraining")
+        logger.info("=" * 70)
+        logger.info("STARTING MODEL RETRAINING")
+        logger.info("=" * 70)
 
+        # Get total samples BEFORE train/val split
+        data_check = self.check_new_data()
+        total_samples_uploaded = data_check.get("total_samples", 0)
+        
         # Backup current model
         if RETRAINING_CONFIG.get("backup_old_models", True):
             backup_dir = self._backup_current_model()
@@ -396,14 +576,26 @@ class RetrainingPipeline:
         # Prepare data
         train_gen, val_gen = self.prepare_data_generators()
         if train_gen is None or val_gen is None:
+            error_msg = "Failed to prepare data generators - no valid training data found"
+            logger.error(error_msg)
             return {
                 "status": "failed",
-                "error": "Failed to prepare data generators"
+                "error": error_msg,
+                "samples_used": 0
+            }
+        
+        if train_gen.n == 0:
+            error_msg = "Training generator has 0 samples - check your uploaded images match model classes"
+            logger.error(error_msg)
+            return {
+                "status": "failed",
+                "error": error_msg,
+                "samples_used": 0
             }
 
         # Load existing model or build new one
         if not self.detector.load_model():
-            logger.warning(" No existing model found, building new one")
+            logger.warning("No existing model found, building new one")
             self.detector.num_plant_classes = len(self.plant_to_idx)
             self.detector.num_disease_classes = len(self.disease_to_idx)
             self.detector.build_model()
@@ -413,7 +605,7 @@ class RetrainingPipeline:
 
         # Fine-tuning: unfreeze some layers
         if fine_tune and self.detector.model:
-            logger.info(" Unfreezing layers for fine-tuning")
+            logger.info("Unfreezing layers for fine-tuning")
             # Unfreeze last 20 layers
             for layer in self.detector.model.layers[-20:]:
                 if not isinstance(layer, tf.keras.layers.BatchNormalization):
@@ -432,7 +624,7 @@ class RetrainingPipeline:
                     'disease_output': ['accuracy']
                 }
             )
-            logger.info(" Model recompiled for fine-tuning")
+            logger.info("Model recompiled for fine-tuning")
 
         # Setup callbacks
         callbacks = [
@@ -459,6 +651,7 @@ class RetrainingPipeline:
 
         # Train
         try:
+            logger.info(f"Starting training: {epochs} epochs with {total_samples_uploaded} total samples ({train_gen.n} train, {val_gen.n} val)")
             history = self.detector.model.fit(
                 train_gen,
                 validation_data=val_gen,
@@ -468,7 +661,7 @@ class RetrainingPipeline:
             )
 
             self.training_history = history.history
-            logger.info(" Retraining completed")
+            logger.info("Retraining completed successfully")
 
             # Clean up temp directories
             if (RETRAIN_DATA_DIR / "temp_train").exists():
@@ -476,43 +669,37 @@ class RetrainingPipeline:
             if (RETRAIN_DATA_DIR / "temp_val").exists():
                 shutil.rmtree(RETRAIN_DATA_DIR / "temp_val")
 
-            # Compile results
+            # Compile results - use total uploaded samples
             results = {
                 "status": "success",
                 "epochs_trained": len(history.history['loss']),
-                "samples_used": train_gen.n,
+                "samples_used": total_samples_uploaded,  # Total uploaded (before split)
+                "train_samples": train_gen.n,  # Actual training samples
+                "val_samples": val_gen.n,  # Actual validation samples
                 "final_metrics": {
-                "plant_train_acc": float(history.history['plant_output_accuracy'][-1]),
-                "plant_val_acc": float(history.history['val_plant_output_accuracy'][-1]),
-                "disease_train_acc": float(history.history['disease_output_accuracy'][-1]),
-                "disease_val_acc": float(history.history['val_disease_output_accuracy'][-1]),
+                    "plant_train_acc": float(history.history['plant_output_accuracy'][-1]),
+                    "plant_val_acc": float(history.history['val_plant_output_accuracy'][-1]),
+                    "disease_train_acc": float(history.history['disease_output_accuracy'][-1]),
+                    "disease_val_acc": float(history.history['val_disease_output_accuracy'][-1]),
                 },
                 "timestamp": datetime.now().isoformat()
             }
 
+            logger.info(f"Final metrics: {results['final_metrics']}")
+            logger.info("=" * 70)
+            logger.info("RETRAINING COMPLETED SUCCESSFULLY")
+            logger.info("=" * 70)
             return results
 
         except Exception as e:
-            logger.error(f" Retraining failed: {str(e)}")
+            logger.error(f"Retraining failed: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {
                 "status": "failed",
-                "error": str(e)
+                "error": str(e),
+                "samples_used": total_samples_uploaded
             }
-        finally:
-            # ALWAYS clean up temp directories
-            try:
-                temp_train = RETRAIN_DATA_DIR / "temp_train"
-                temp_val = RETRAIN_DATA_DIR / "temp_val"
-                
-                if temp_train.exists():
-                    shutil.rmtree(temp_train)
-                    logger.info(f" Cleaned up {temp_train}")
-                
-                if temp_val.exists():
-                    shutil.rmtree(temp_val)
-                    logger.info(f" Cleaned up {temp_val}")
-            except Exception as e:
-                logger.warning(f" Failed to clean temp directories: {str(e)}")
 
     def save_retrained_model(self, version: Optional[str] = None) -> str:
         """
@@ -530,7 +717,7 @@ class RetrainingPipeline:
             major, minor, patch = map(int, current.replace('v', '').split('.'))
             version = f"v{major}.{minor + 1}.0"
 
-        logger.info(f" Saving retrained model as {version}")
+        logger.info(f"Saving retrained model as {version}")
 
         # Save model
         self.detector.save_model(save_mappings=True)
@@ -545,7 +732,7 @@ class RetrainingPipeline:
         self.model_versions["current_version"] = version
         self._save_model_versions()
 
-        logger.info(f" Model saved as {version}")
+        logger.info(f"Model saved as {version}")
         return version
 
     def trigger_retrain(self, min_samples: Optional[int] = None) -> Dict:
@@ -573,12 +760,12 @@ class RetrainingPipeline:
 
         if data_check["total_samples"] < min_samples:
             status["reason"] = f"Insufficient data: {data_check['total_samples']} < {min_samples}"
-            logger.info(f" {status['reason']}")
+            logger.info(f"{status['reason']}")
             return status
 
         status["triggered"] = True
         status["reason"] = f"Retraining conditions met: {data_check['total_samples']} samples available"
-        logger.info(f" {status['reason']}")
+        logger.info(f"{status['reason']}")
 
         return status
 
@@ -587,9 +774,14 @@ if __name__ == "__main__":
     # Test the retraining pipeline
     pipeline = RetrainingPipeline()
     
-    print(" Checking for new training data...")
+    print("Checking for new training data...")
     data_check = pipeline.check_new_data()
-    print(f"\n Data Status:")
+    print(f"\nData Status:")
     print(f"  - Total samples: {data_check['total_samples']}")
     print(f"  - Ready to retrain: {data_check['ready_to_retrain']}")
     print(f"  - Message: {data_check['message']}")
+    
+    if data_check.get('invalid_classes'):
+        print(f"\nInvalid classes found:")
+        for inv in data_check['invalid_classes']:
+            print(f"  - {inv}")

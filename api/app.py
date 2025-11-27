@@ -602,7 +602,7 @@ async def perform_retraining(pipeline: RetrainingPipeline, engine: PredictionEng
     
     try:
         logger.info("="*70)
-        logger.info(" STARTING MODEL RETRAINING")
+        logger.info("STARTING MODEL RETRAINING")
         logger.info("="*70)
         
         # Retrain
@@ -613,35 +613,39 @@ async def perform_retraining(pipeline: RetrainingPipeline, engine: PredictionEng
         if results["status"] == "success":
             # Save new model
             new_version = pipeline.save_retrained_model()
-            logger.info(f" Model saved as {new_version}")
+            logger.info(f"Model saved as {new_version}")
             
             # Log to database
             final_metrics = results.get("final_metrics", {})
             
             db.log_retraining(
                 version=new_version,
-                samples_used=results.get("samples_used", 0),
+                samples_used=results.get("samples_used", 0),  # This now shows total uploaded
                 epochs=epochs,
                 plant_accuracy=final_metrics.get("plant_val_acc", 0.0),
                 disease_accuracy=final_metrics.get("disease_val_acc", 0.0),
                 training_time_seconds=training_time,
                 status="success",
-                notes=f"Retraining completed successfully in {training_time:.1f}s"
+                notes=f"Retraining completed: {results.get('train_samples', 0)} train, {results.get('val_samples', 0)} val samples"
             )
             
             # Reload in prediction engine
             engine.load_model()
-            logger.info(" Prediction engine reloaded with new model")
+            logger.info("Prediction engine reloaded with new model")
+            
+            # CLEAR RETRAIN DATA after successful retraining
+            if pipeline.clear_retrain_data():
+                logger.info("Retrain data cleared - ready for next session")
             
             api_status["last_retrain"] = datetime.now().isoformat()
             logger.info("="*70)
-            logger.info(" RETRAINING COMPLETED SUCCESSFULLY")
+            logger.info("RETRAINING COMPLETED SUCCESSFULLY")
             logger.info("="*70)
         else:
             # Log failure
             db.log_retraining(
                 version="failed",
-                samples_used=0,
+                samples_used=results.get("samples_used", 0),
                 epochs=epochs,
                 plant_accuracy=0.0,
                 disease_accuracy=0.0,
@@ -649,7 +653,7 @@ async def perform_retraining(pipeline: RetrainingPipeline, engine: PredictionEng
                 status="failed",
                 notes=results.get('error', 'Unknown error')
             )
-            logger.error(f" Retraining failed: {results.get('error')}")
+            logger.error(f"Retraining failed: {results.get('error')}")
         
     except Exception as e:
         training_time = time.time() - start_time
@@ -665,7 +669,7 @@ async def perform_retraining(pipeline: RetrainingPipeline, engine: PredictionEng
             status="error",
             notes=str(e)
         )
-        logger.error(f" Retraining error: {str(e)}")
+        logger.error(f"Retraining error: {str(e)}")
     finally:
         api_status["retraining_in_progress"] = False
 
@@ -817,7 +821,38 @@ async def get_retrain_history(limit: int = Query(10, description="Number of rece
     
     except Exception as e:
         logger.error(f" Error fetching retraining history: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+#endpoint to clear retraining data
+    app.delete("/retrain/data", tags=["Retraining"])
+async def clear_retrain_data():
+    """
+    Manually clear all uploaded retraining data
+    
+    Returns:
+        Status of data clearing operation
+    """
+    if not retraining_pipeline:
+        raise HTTPException(status_code=503, detail="Retraining pipeline not initialized")
+    
+    if api_status["retraining_in_progress"]:
+        raise HTTPException(status_code=409, detail="Cannot clear data while retraining is in progress")
+    
+    try:
+        success = retraining_pipeline.clear_retrain_data()
+        
+        if success:
+            return {
+                "status": "success",
+                "message": "Retrain data cleared successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear retrain data")
+    
+    except Exception as e:
+        logger.error(f"Error clearing retrain data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e)) 
 
 
 # ERROR HANDLERS

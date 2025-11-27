@@ -17,14 +17,14 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display batch processing page"""
-    st.title("📦 Batch Image Processing")
+    st.title(" Batch Image Processing")
     
     st.write("Upload multiple leaf images for bulk disease prediction.")
     
     st.divider()
     
     # File uploader
-    st.subheader("📤 Upload Multiple Images")
+    st.subheader(" Upload Multiple Images")
     
     uploaded_files = st.file_uploader(
         "Choose leaf images",
@@ -34,14 +34,14 @@ def show():
     )
     
     if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} image(s) selected")
+        st.success(f" {len(uploaded_files)} image(s) selected")
         
         if len(uploaded_files) > 50:
-            st.error("❌ Maximum 50 images allowed per batch")
+            st.error(" Maximum 50 images allowed per batch")
             return
         
         # Show thumbnails
-        with st.expander(f"📋 Preview ({len(uploaded_files)} images)"):
+        with st.expander(f" Preview ({len(uploaded_files)} images)"):
             cols = st.columns(5)
             for idx, file in enumerate(uploaded_files[:10]):  # Show first 10
                 with cols[idx % 5]:
@@ -53,7 +53,7 @@ def show():
         st.divider()
         
         # Process button
-        if st.button("🚀 PROCESS BATCH", use_container_width=True, type="primary"):
+        if st.button(" PROCESS BATCH", use_container_width=True, type="primary"):
             with st.spinner(f"🔄 Processing {len(uploaded_files)} images..."):
                 try:
                     # Prepare files for API
@@ -72,7 +72,7 @@ def show():
                     if response.status_code == 200:
                         result = response.json()
                         
-                        st.success("✅ Batch Processing Complete!")
+                        st.success(" Batch Processing Complete!")
                         st.divider()
                         
                         # Summary
@@ -87,7 +87,7 @@ def show():
                         st.divider()
                         
                         # Results table
-                        st.subheader("📊 Results")
+                        st.subheader(" Results")
                         
                         results_data = []
                         for item in result["results"]:
@@ -115,7 +115,7 @@ def show():
                         st.divider()
                         
                         # Download results
-                        st.subheader("💾 Export Results")
+                        st.subheader(" Export Results")
                         
                         import json
                         json_str = json.dumps(result, indent=2)
@@ -140,16 +140,16 @@ def show():
                         )
                     
                     else:
-                        st.error(f"❌ Error: {response.status_code}")
+                        st.error(f" Error: {response.status_code}")
                         st.error(response.text)
                 
                 except requests.exceptions.ConnectionError:
-                    st.error("❌ Cannot connect to API")
+                    st.error(" Cannot connect to API")
                     st.info("Make sure the API is running:")
                     st.code("python api/app.py", language="bash")
                 
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+                    st.error(f" Error: {str(e)}")
     
     else:
         st.info(" Upload images to get started")

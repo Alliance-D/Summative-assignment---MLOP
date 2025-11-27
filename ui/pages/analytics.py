@@ -19,7 +19,7 @@ API_URL = "http://localhost:8000"
 
 def show():
     """Display analytics page with real data"""
-    st.title("📊 Data Analytics & Visualizations")
+    st.title(" Data Analytics & Visualizations")
     
     st.write("Real-time analytics and insights from prediction history")
     
@@ -28,9 +28,9 @@ def show():
     # Refresh button
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.subheader("📈 Live Analytics")
+        st.subheader(" Live Analytics")
     with col2:
-        if st.button("🔄 Refresh", use_container_width=True):
+        if st.button(" Refresh", use_container_width=True):
             st.rerun()
     
     try:
@@ -47,7 +47,7 @@ def show():
             
             # Check if we have data
             if pred_stats.get("total", 0) == 0:
-                st.info("📊 No predictions recorded yet. Make some predictions to see analytics!")
+                st.info(" No predictions recorded yet. Make some predictions to see analytics!")
                 st.divider()
                 st.subheader("ℹ️ What You'll See Here")
                 st.write("""
@@ -311,7 +311,7 @@ def show():
                         """)
                     else:
                         st.success("""
-                        ✅ **Excellent**: 
+                         **Excellent**: 
                         - Both plant and disease classification show high confidence
                         - Model is performing well across both tasks
                         """)

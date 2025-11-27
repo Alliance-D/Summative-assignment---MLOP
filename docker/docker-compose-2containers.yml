@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx-2.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api1
+      - api2
+    networks:
+      - plant-disease-net
+
+  api1:
+    build: .
+    container_name: plant-disease-api-1
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data
+    environment:
+      - CONTAINER_ID=1
+    networks:
+      - plant-disease-net
+
+  api2:
+    build: .
+    container_name: plant-disease-api-2
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data
+    environment:
+      - CONTAINER_ID=2
+    networks:
+      - plant-disease-net
+
+networks:
+  plant-disease-net:
+    driver: bridge

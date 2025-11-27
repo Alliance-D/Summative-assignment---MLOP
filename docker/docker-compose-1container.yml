@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  api1:
+    build: .
+    container_name: plant-disease-api-1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data
+    networks:
+      - plant-disease-net
+networks:
+  plant-disease-net:
+    driver: bridge
