@@ -872,7 +872,10 @@ async def global_exception_handler(request, exc):
             "error": str(exc)
         }
     )
-    
+    print("Model path:", MULTI_OUTPUT_MODEL)
+    print("Model exists:", MULTI_OUTPUT_MODEL.exists())
+    print("Class mappings path:", CLASS_MAPPINGS_FILE)
+    print("Class mappings exists:", CLASS_MAPPINGS_FILE.exists())
 
 
 # MAIN
@@ -896,3 +899,4 @@ if __name__ == "__main__":
         reload=not is_production,  # Disable reload in production
         log_level="info"
     )
+    
